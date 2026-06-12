@@ -1114,38 +1114,44 @@
         if (hasNewMessage) document.getElementById("chatBadge").style.display = "flex";
       }
 
-      function openChat() {
-        if (gameFinished) return;
-        if (chatUsedThisTurn) { alert("这回合已经聊过了，下个回合再来吧。"); return; }
-        chatUsedThisTurn = true;
-        hasNewMessage = false;
-        document.getElementById("chatBadge").style.display = "none";
-        chatMessages = [];
-        currentChatStep = 0;
-        chatSequence = [];
-        if (pendingAutoMessage) {
-          chatMessages.push({ side: "left", text: pendingAutoMessage });
-          chatSequence = getAutoChatSequence();
-          pendingAutoMessage = null;
-        } else {
-          const topic = getRandomChatTopic();
-          chatMessages.push({ side: "left", text: topic.trigger });
-          chatSequence = [
-            { side: "left", text: topic.reply },
-            { options: topic.options }
-          ];
-        }
-        renderChatScreen();
-      }
+    function openChat() {
+  if (gameFinished) return;
+  if (chatUsedThisTurn) { alert("这回合已经聊过了，下个回合再来吧。"); return; }
+  chatUsedThisTurn = true;
+  hasNewMessage = false;
+  document.getElementById("chatBadge").style.display = "none";
+  chatMessages = [];
+  currentChatStep = 0;
+  chatSequence = [];
 
-      function getAutoChatSequence() {
-        const topic = getRandomChatTopic();
-        return [
-          { side: "left", text: "（他似乎在等你的回复）" },
-          { options: topic.options }
-        ];
-      }
+  if (pendingAutoMessage) {
+    // 第3/5/11回合：李羲承主动发消息
+    chatMessages.push({ side: "left", text: pendingAutoMessage });
+    const topic = getRandomChatTopic();
+    chatSequence = [
+      { side: "left", text: "（他似乎在等你的回复）" },
+      { options: topic.options }
+    ];
+    pendingAutoMessage = null;
+  } else {
+    // 其他回合：玩家主动发起聊天
+    chatMessages.push({ side: "right", text: "（你发了一条消息）" });
+    const topic = getRandomChatTopic();
+    chatMessages.push({ side: "left", text: topic.trigger });
+    chatSequence = [
+      { options: topic.options }
+    ];
+  }
+  renderChatScreen();
+}
 
+     function getAutoChatSequence() {
+  const topic = getRandomChatTopic();
+  return [
+    { side: "left", text: "（他似乎在等你的回复）" },
+    { options: topic.options }
+  ];
+}
       function renderChatScreen() {
         const overlay = document.createElement('div');
         overlay.className = 'chat-screen-overlay';
