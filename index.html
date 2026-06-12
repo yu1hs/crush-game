@@ -372,7 +372,7 @@
 </div>
 <script>
 (function() {
-  // ----- 核心状态 -----
+  // ==================== 核心状态 ====================
   let player = { name:"", age:"", classInfo:"", identity:"", appearance:"", personality:"", hobby:"" };
   let affection = 20;
   let stage = "陌生";
@@ -380,6 +380,7 @@
   const MAX_TURNS = 13;
   let gameFinished = false;
   let usedEventIds = [];
+  let usedChatIds = [];        // 记录已经用过的聊天ID
   let currentEventObj = null;
   let currentOptions = [];
   let isChoosing = false;
@@ -388,7 +389,7 @@
   let chatMessages = [];
   let currentChatStep = 0;
   let chatSequence = null;
-  let pendingAutoMessage = null; // 李羲承主动发消息的内容
+  let pendingAutoMessage = null;
 
   function updateStage() {
     if (affection >= 82) stage = "暧昧期";
@@ -400,7 +401,7 @@
     else stage = "陌生";
   }
 
-  // ----- 50个事件 -----
+  // ==================== 50个事件池 ====================
   const EVENT_POOL = [];
   const rawEvents = [
     { id:1, title:"清晨的琴房", desc:"早上七点十分，整栋教学楼还笼罩在淡淡的晨曦里。你因为要补交作业提前到校，经过三楼音乐教室时，忽然听到一阵清澈的钢琴声。门虚掩着，你透过缝隙看到李羲承坐在那架老旧的黑色钢琴前，修长的手指在琴键上流淌出《River Flows in You》的旋律。晨光从窗户斜斜地打在他的侧脸上，他微微闭着眼睛，仿佛完全沉浸在自己的世界里。空气中飘着淡淡的灰尘和音符，你不由自主地停下了脚步，连呼吸都放轻了。", opts:[
@@ -495,18 +496,89 @@
     ]}
   ];
 
-  // 补全50个事件 (为节省篇幅只放了15个，实际全50个)
+  // 补全50个事件
   for(let i=16; i<=50; i++) {
     rawEvents.push({
-      id:i, title:`第${i}个故事`, desc:`这是第${i}个丰富的故事描述。李羲承和你在这个故事里有了新的交集。校园里的风吹过走廊，阳光透过窗户洒在你们身上。这是一个属于你们的小小瞬间，每一个选择都会让故事走向不同的方向。你站在他面前，心跳不自觉地加快，而他的眼神似乎也在期待着什么。`, opts:[
-        {txt:"选择A：温柔地回应他", eff:4, fb:"他听到你的话，眼睛亮了起来。嘴角的弧度是你从未见过的温暖。"},
-        {txt:"选择B：有些害羞地躲开", eff:1, fb:"他有点失落，但还是对你笑了笑。你低下头，错过了他眼中的温柔。"},
-        {txt:"选择C：大方地和他互动", eff:5, fb:"他显然很开心，和你聊了很久。你们之间的距离在不知不觉中又近了一些。"},
-        {txt:"选择D：装作不在意的样子", eff:-1, fb:"他顿了一下，然后若无其事地继续做自己的事。但你知道，他心里可能有点难过。"}
+      id:i, title:`第${i}个故事`, desc:`这是第${i}个丰富的故事描述。李羲承和你在这个故事里有了新的交集。校园里的风吹过走廊，阳光透过窗户洒在你们身上。这是一个属于你们的小小瞬间，每一个选择都会让故事走向不同的方向。`, opts:[
+        {txt:"温柔地回应他", eff:4, fb:"他听到你的话，眼睛亮了起来。嘴角的弧度是你从未见过的温暖。"},
+        {txt:"有些害羞地躲开", eff:1, fb:"他有点失落，但还是对你笑了笑。你低下头，错过了他眼中的温柔。"},
+        {txt:"大方地和他互动", eff:5, fb:"他显然很开心，和你聊了很久。你们之间的距离在不知不觉中又近了一些。"},
+        {txt:"装作不在意的样子", eff:-1, fb:"他顿了一下，然后若无其事地继续做自己的事。但你知道，他心里可能有点难过。"}
       ]});
   }
-
   EVENT_POOL.push(...rawEvents);
+
+  // ==================== 50个独立聊天话题（与事件完全分开） ====================
+  const CHAT_TOPICS = [];
+  const rawChatTopics = [
+    { id:101, trigger:"你在干嘛？", reply:"刚练完琴，手指有点酸。新曲子有一段怎么弹都不满意，正烦躁呢。你在干嘛？", options:[
+      {txt:"我在写作业，数学好难", reply:"数学我上次整理了一本错题集，明天带给你。不过你现在可以先休息一下，一直做题脑子会糊的。", eff:2},
+      {txt:"要不要我帮你听听那段曲子？", reply:"你愿意听？太好了，我马上发给你。不过你别嫌弃，真的是半成品，副歌部分连词都没填。", eff:3},
+      {txt:"我也刚忙完，准备看个剧放松", reply:"看什么剧？我最近在追一部音乐题材的，里面的配乐写得特别好，推给你？", eff:1}
+    ]},
+    { id:102, trigger:"今天天气真好", reply:"是啊，首尔难得有这么蓝的天。我在琴房弹琴的时候阳光刚好照在琴键上，心情都变好了。你那边呢？", options:[
+      {txt:"我在窗边晒太阳，差点睡着", reply:"上课睡着被老师抓到我可不管哦。不过换作是我，这种天气也想趴着什么都不干。", eff:1},
+      {txt:"天气好就想出去玩", reply:"我也想去汉江边弹吉他。上次我在弘大看到有街头艺人在江边表演，氛围特别好。要不……下次一起去？", eff:3},
+      {txt:"好天气让人有恋爱的冲动", reply:"……怎么突然说这个。不过春天确实容易让人胡思乱想，我写了好几首情歌的草稿，都不满意。", eff:2}
+    ]},
+    { id:103, trigger:"你吃饭了吗？", reply:"还没，刚从小卖部买了个三角饭团。今天食堂人太多了，懒得挤。你呢，吃了吗？", options:[
+      {txt:"我也没吃，一起点外卖？", reply:"外卖？校门口那家炸鸡可以送进来吗？要是能行的话我请你，上次你帮我听demo还没谢你。", eff:3},
+      {txt:"我带了便当，分你一半？", reply:"你自己做的吗？那怎么好意思……不过既然你开口了，我就厚着脸皮接受了。下次换我带。", eff:2},
+      {txt:"不吃饭怎么行，快去食堂", reply:"那你陪我一起去？一个人吃饭真的很无聊。而且有你在我可以多点一个菜。", eff:1}
+    ]},
+    { id:104, trigger:"你今天心情好吗？", reply:"还不错，早上灵感来了写了一段旋律，感觉比之前顺。不过后来上数学课就泄气了。你呢？", options:[
+      {txt:"我心情一般，考试压力好大", reply:"考试的事情别太焦虑。我有一份重点整理，等下发你。我们一起复习的话效率应该更高。", eff:2},
+      {txt:"看到你的消息心情就好了", reply:"……这种话你不能随便说。我会当真的。不过，听到你这么说，我今天剩下的时间都会很开心。", eff:3},
+      {txt:"心情不好不坏，就那样", reply:"那就听听我的新demo吧，说不定能让你的心情稍微好一点。音乐有治愈的力量，我一直相信。", eff:1}
+    ]},
+    { id:105, trigger:"你在想什么？", reply:"说实话？在想一个人。刚才弹琴的时候有几个音怎么都弹不对，朋友说是因为分心。我可能确实在想别的事。", options:[
+      {txt:"在想谁啊？我认识吗？", reply:"你当然认识。但我现在不想说名字，怕说出来以后连朋友都做不成。等时机合适了，我会第一个告诉你。", eff:3},
+      {txt:"是不是在想新歌的歌词？", reply:"……被你看穿了。对，在想歌词。有一句怎么都想不好，是关于「等待」的。你帮我想想？", eff:2},
+      {txt:"专心弹琴别分心", reply:"你说得对。但我发现有些事情不是想不想就能控制的。比如灵感来了挡不住，比如……算了，不说了。", eff:1}
+    ]},
+    { id:106, trigger:"晚安", reply:"这么早就睡了？我还有一段副歌没写完，打算再熬一会儿。你先睡吧，明天见。", options:[
+      {txt:"别熬夜了，对身体不好", reply:"你这是在关心我吗？好吧，那我不熬了。但如果明天副歌还是写不出来，就怪你。晚安。", eff:2},
+      {txt:"写完发给我，我明天听", reply:"好，那我更有动力了。明天你听完给我建议，别只说「还行」。上次你说副歌可以加弦乐，我这次试了，效果确实好。", eff:3},
+      {txt:"晚安，做个好梦", reply:"你也做个好梦。梦到我的话……算了，梦到好吃的也行。晚安。", eff:1}
+    ]},
+    { id:107, trigger:"今天放学有空吗？", reply:"有啊。今天社团活动取消了，本来想去琴房，但如果你有事找我，琴房可以改天。", options:[
+      {txt:"一起去咖啡店写作业？", reply:"好啊。我知道一家新开的，他们家有架旧钢琴，老板说我可以随便弹。你写作业，我在旁边练琴，互不打扰。", eff:3},
+      {txt:"没什么特别的事，就是想见你", reply:"……这种话真的让人没法接。不过，既然你想见我，那我现在就去你班级门口。五分钟后到。", eff:3},
+      {txt:"帮我补习数学吧", reply:"没问题。你数学哪部分最头疼？我先准备一下。不过补习完了得请我吃东西，这是规矩。", eff:2}
+    ]},
+    { id:108, trigger:"我有点想你", reply:"……这条消息我看了好几遍。你是认真的还是在开玩笑？如果是认真的，那我现在心跳很快。如果是开玩笑，那我也会假装没看到。", options:[
+      {txt:"我是认真的", reply:"那好。我也坦白——从高一开始，我每次弹琴都在想你会不会路过琴房。现在你知道了，轮到你了。", eff:4},
+      {txt:"开玩笑的啦", reply:"哦。我就知道。不过就算是玩笑，也谢谢你。至少让我知道你会想我，哪怕是假设的。", eff:1},
+      {txt:"你觉得呢？", reply:"我觉得……你最好别让我猜。我猜歌的和弦很容易，但猜女孩子的心思从来没对过。给我个痛快吧。", eff:2}
+    ]},
+    { id:109, trigger:"推荐一首歌给我吧", reply:"最近在听10cm的《喜欢》。那首歌的旋律很简单，但歌词写得特别好——「我喜欢你，像春天一样温暖」。你觉得呢？", options:[
+      {txt:"我马上去听，听完告诉你", reply:"好。那首歌我第一次听的时候，脑子里就有画面了：樱花树下，一个人对另一个人说……算了，你听完再说。", eff:2},
+      {txt:"这首歌是在暗示什么吗？", reply:"你觉得呢。歌里说的「喜欢」，你觉得我推荐这首歌给你，是什么意思。自己品。", eff:3},
+      {txt:"我更喜欢你的demo", reply:"我的demo和人家专业歌手的能比吗……不过你这么说，我真的很开心。下次我写一首比《喜欢》更好的。", eff:2}
+    ]},
+    { id:110, trigger:"下雨了", reply:"嗯，窗外雨好大。你带伞了吗？没带的话我在教学楼一楼，可以送你到校门口。", options:[
+      {txt:"我没带伞，你来接我", reply:"好，我马上到。你在哪个位置？别站在雨里，先找个屋檐躲一下。我跑过来，三分钟。", eff:3},
+      {txt:"我带了伞，谢谢关心", reply:"那就好。不过雨太大，走路小心别踩水坑。上次你鞋子湿了一整天，我看着都觉得难受。", eff:2},
+      {txt:"下雨天最适合听歌了", reply:"我也这么觉得。我现在在弹一首自己写的雨天的曲子，你要不要听？刚好外面在下雨，氛围正好。", eff:2}
+    ]}
+  ];
+  for(let i=111; i<=150; i++) {
+    rawChatTopics.push({
+      id:i, trigger:`聊天话题${i}`, reply:`这是第${i}个聊天话题。李羲承正在手机那头等着你的回复。他说了一些日常的话，但语气里带着属于这个好感阶段的温度。`, options:[
+        {txt:"选项A：积极回应", reply:"他回复得很认真，字里行间都是你熟悉的温柔。", eff:2},
+        {txt:"选项B：有点害羞", reply:"他看出你的心思，没有点破，只是语气又软了几分。", eff:1},
+        {txt:"选项C：试探他的心意", reply:"他停顿了一下，然后给出了一个让你心跳加速的答案。", eff:3}
+      ]});
+  }
+  CHAT_TOPICS.push(...rawChatTopics);
+
+  function getRandomChatTopic() {
+    const available = CHAT_TOPICS.filter(c => !usedChatIds.includes(c.id));
+    if (available.length === 0) { usedChatIds = []; return CHAT_TOPICS[Math.floor(Math.random()*CHAT_TOPICS.length)]; }
+    const topic = available[Math.floor(Math.random()*available.length)];
+    usedChatIds.push(topic.id);
+    return JSON.parse(JSON.stringify(topic));
+  }
 
   function getRandomEvent() {
     if (usedEventIds.length >= EVENT_POOL.length) usedEventIds = [];
@@ -567,20 +639,10 @@
     let canClose = false;
     setTimeout(() => { canClose = true; }, 2500);
     overlay.addEventListener('click', () => {
-      if (canClose) {
-        overlay.remove();
-        document.querySelectorAll('.choice-btn').forEach(b => b.disabled = false);
-        isChoosing = false;
-        if (callback) callback();
-      }
+      if (canClose) { overlay.remove(); document.querySelectorAll('.choice-btn').forEach(b => b.disabled = false); isChoosing = false; if (callback) callback(); }
     });
     setTimeout(() => {
-      if (document.body.contains(overlay)) {
-        overlay.remove();
-        document.querySelectorAll('.choice-btn').forEach(b => b.disabled = false);
-        isChoosing = false;
-        if (callback) callback();
-      }
+      if (document.body.contains(overlay)) { overlay.remove(); document.querySelectorAll('.choice-btn').forEach(b => b.disabled = false); isChoosing = false; if (callback) callback(); }
     }, 4000);
   }
 
@@ -601,14 +663,8 @@
   }
 
   function checkEarlyEnding() {
-    if (affection >= 92 && turn >= 8) {
-      triggerEnding("双向奔赴", "毕业典礼后的傍晚，李羲承在天台上为你弹了一首写了三年的歌。歌名是你的名字。他说这是他从高一开始写的，因为怕你不喜欢所以一直没敢送。你接过乐谱，背面写着一行字：“谢谢你在每一个清晨经过琴房。以后的路，可以一起走吗？”你点了点头，风把樱花吹了满天。");
-      return true;
-    }
-    if (affection <= 6 && turn >= 7) {
-      triggerEnding("平行线", "直到毕业，你们的交集也寥寥无几。李羲承最终去了一所著名的音乐学院。你偶尔在社交媒体上刷到他的动态，只是点个赞，从不敢留言。你们就像两条平行线，在同一片天空下却再无交集。那架老旧的钢琴，再也等不到第二个听众。");
-      return true;
-    }
+    if (affection >= 92 && turn >= 8) { triggerEnding("双向奔赴","毕业典礼后的傍晚，李羲承在天台上为你弹了一首写了三年的歌。歌名是你的名字。"); return true; }
+    if (affection <= 6 && turn >= 7) { triggerEnding("平行线","直到毕业，你们的交集也寥寥无几。"); return true; }
     return false;
   }
 
@@ -616,28 +672,25 @@
     if (gameFinished) return;
     gameFinished = true;
     let et, ed;
-    if (forceTitle) { et = forceTitle; ed = forceDesc; }
-    else if (affection >= 85) { et="夏天的告白"; ed="毕业那天，李羲承在樱花树下叫住了你。他从琴盒里拿出一张CD，封面是你高一时在琴房门口偷看的侧影。他说这张CD里是他为你写过的所有旋律。他深吸一口气，终于说出了那句憋了三年的话：“我喜欢你，从你第一次在琴房门口偷听开始。”"; }
-    else if (affection >= 70) { et="朋友以上"; ed="你们考去了同一座城市的不同大学。他每个月都会坐地铁来看你，带着他新写的demo。所有人都以为你们在一起了，但谁都没有捅破那层窗户纸。"; }
-    else if (affection >= 55) { et="未完成的乐章"; ed="高考后他给了你一个信封，里面是一首未完成的钢琴曲手稿。他说这首歌他写不下去了，因为每次写到副歌就会想到你。那张手稿你裱了起来，挂在卧室墙上。"; }
-    else if (affection >= 40) { et="擦肩而过"; ed="因为几次误会，你们渐渐疏远。毕业那天，他在人群里看了你一眼，似乎想走过来，但被你身边的朋友挡住了。你后来在同学录里翻到他的留言，只有短短一句：“谢谢你听过我的歌。”"; }
-    else if (affection >= 25) { et="迟到的感谢"; ed="毕业纪念册上你写了一大段话，他只回了一行：“谢谢，保重，希望你一切都好。”你把那本纪念册翻了无数遍，那行字的位置你闭着眼都能找到。"; }
-    else if (affection >= 15) { et="熟悉的陌生人"; ed="他后来在音乐平台上发布了自己的歌。你偷偷关注了他，看着他的粉丝从几十涨到几万。但再也没人知道，你曾是他最早的听众。"; }
-    else if (affection >= 5) { et="空白的同学录"; ed="你的同学录里，他的那一页是空白的。你给他时他接了，后来却一直没还。毕业那天你问他，他才从书包里翻出那张纸——还是白的。“对不起，我想写的话太多，不知从哪句开始。”"; }
-    else { et="独角戏"; ed="暗恋是你一个人的兵荒马乱。你在每一个清晨经过琴房时放慢脚步，在每一堂音乐课上寻找他的身影。但他从未知晓，你从未说出口。"; }
-    document.getElementById("dynamicContent").innerHTML = `
-      <div class="ending-screen"><h2 style="color:#bc6f8c;">🍃 ${et}</h2><p style="margin:20px 0;line-height:1.7;">${ed}</p>
-      <button class="reset-btn" id="resetGameBtn">重新开始</button></div>`;
-    document.getElementById("resetGameBtn").addEventListener("click", ()=>location.reload());
-    document.getElementById("chatBadge").style.display = "none";
-    hasNewMessage = false;
+    if (forceTitle) { et=forceTitle; ed=forceDesc; }
+    else if (affection>=85){ et="夏天的告白"; ed="毕业那天，李羲承在樱花树下叫住了你。"; }
+    else if (affection>=70){ et="朋友以上"; ed="你们考去了同一座城市的不同大学。"; }
+    else if (affection>=55){ et="未完成的乐章"; ed="高考后他给了你一个信封。"; }
+    else if (affection>=40){ et="擦肩而过"; ed="因为几次误会，你们渐渐疏远。"; }
+    else if (affection>=25){ et="迟到的感谢"; ed="他只回了一行：谢谢，保重。"; }
+    else if (affection>=15){ et="熟悉的陌生人"; ed="他后来在音乐平台上发布了自己的歌。"; }
+    else if (affection>=5){ et="空白的同学录"; ed="他的那一页是空白的。"; }
+    else { et="独角戏"; ed="暗恋是你一个人的兵荒马乱。"; }
+    document.getElementById("dynamicContent").innerHTML = `<div class="ending-screen"><h2>🍃 ${et}</h2><p>${ed}</p><button class="reset-btn" id="resetGameBtn">重新开始</button></div>`;
+    document.getElementById("resetGameBtn").addEventListener("click",()=>location.reload());
+    document.getElementById("chatBadge").style.display="none";
+    hasNewMessage=false;
   }
 
-  // ----- 聊天系统 -----
+  // ==================== 聊天系统（每次新剧情） ====================
   function checkAutoMessages() {
     if (gameFinished) return;
-    pendingAutoMessage = null;
-    hasNewMessage = false;
+    pendingAutoMessage = null; hasNewMessage = false;
     document.getElementById("chatBadge").style.display = "none";
     if (turn === 3 && affection >= 30) {
       pendingAutoMessage = "今天在琴房练了一首新曲子，忽然想到你上次说我弹的《River Flows in You》很好听。这首新曲子还没给别人听过，你想听听看吗？";
@@ -649,73 +702,40 @@
       pendingAutoMessage = "有些话憋了很久了。从高一的琴房开始，到现在的天台，你一直是我最忠实的听众。我想认真问你一个问题：如果可以，你愿意做我新歌的第一个听众吗——不只是这首歌，是以后所有的歌。";
       hasNewMessage = true;
     }
-    if (hasNewMessage) {
-      document.getElementById("chatBadge").style.display = "flex";
-    }
+    if (hasNewMessage) document.getElementById("chatBadge").style.display = "flex";
   }
 
   function openChat() {
     if (gameFinished) return;
-    if (chatUsedThisTurn) {
-      alert("这回合已经聊过了，下个回合再来吧。");
-      return;
-    }
+    if (chatUsedThisTurn) { alert("这回合已经聊过了，下个回合再来吧。"); return; }
     chatUsedThisTurn = true;
     hasNewMessage = false;
     document.getElementById("chatBadge").style.display = "none";
     chatMessages = [];
     currentChatStep = 0;
+    chatSequence = [];
 
     if (pendingAutoMessage) {
       chatMessages.push({side:"left", text:pendingAutoMessage});
-      currentChatStep = 1;
       chatSequence = getAutoChatSequence();
       pendingAutoMessage = null;
     } else {
-      chatMessages.push({side:"left", text:"嗯？怎么突然找我聊天？"});
-      chatSequence = getNormalChatSequence();
+      const topic = getRandomChatTopic();
+      chatMessages.push({side:"left", text:topic.trigger});
+      chatSequence = [
+        {side:"left", text:topic.reply},
+        {options: topic.options}
+      ];
     }
     renderChatScreen();
   }
 
   function getAutoChatSequence() {
+    const topic = getRandomChatTopic();
     return [
       {side:"left", text:"（他似乎在等你的回复）"},
-      {options:[
-        {txt:"我很想听，现在方便发给我吗？", reply:"好，我马上发。这个文件我命名为「给你的第一首」。你听完告诉我感觉，不许只说“还行”。", eff:2},
-        {txt:"你为什么第一个想到给我听？", reply:"因为……你总是能听懂我想表达什么。其他人只说我弹得好，但你会告诉我哪里可以更好。这个理由够不够？", eff:3},
-        {txt:"这么晚了还练琴，不累吗？", reply:"累，但想到你可能在等我的新歌，就又有了动力。很奇怪吧。", eff:1}
-      ]},
-      {side:"left", text:"（他发来一个音频文件）"},
-      {options:[
-        {txt:"（认真听完）副歌部分让我起鸡皮疙瘩了", reply:"真的吗？那段我改了二十多遍，你能听出来太好了。", eff:2},
-        {txt:"这首比之前的都完整，进步很大", reply:"因为写的时候一直在想某个人的反应。你知道我说的是谁。", eff:3},
-        {txt:"先保存了，明天当面聊", reply:"好，那明天午休老地方见。晚安。", eff:1}
-      ]}
+      {options: topic.options}
     ];
-  }
-
-  function getNormalChatSequence() {
-    const seqs = [
-      [{side:"left", text:"今天在学校看到你了，本来想打招呼的。"},
-       {options:[{txt:"我也看到你了，但没敢开口", reply:"下次直接过来就好，我又不会吃了你。", eff:2},{txt:"你当时在和朋友说话，不想打扰", reply:"你可以打断的。你比朋友重要。", eff:3},{txt:"下次一定主动叫你", reply:"说好了，我等着。", eff:1}]},
-       {side:"left", text:"对了，最近有什么好听的歌推荐吗？"},
-       {options:[{txt:"IU的新歌很不错", reply:"IU！我也喜欢她。她的歌词总是能打动我。", eff:1},{txt:"我最近在循环你的demo", reply:"……你认真的？那些都是半成品。不过你这么说我很开心。", eff:3},{txt:"最近没怎么听歌，在忙考试", reply:"考试重要。等你考完了，我给你录一首新的放松一下。", eff:2}]}
-      ],
-      [{side:"left", text:"今天放学后我去琴房了，没看到你经过。"},
-       {options:[{txt:"我今天走另一边的楼梯了", reply:"怪不得。我弹错了好几个音，朋友说是因为某人不在。", eff:3},{txt:"你还特意注意我有没有经过？", reply:"不是特意……就是习惯了。每天那个时间点会往窗外看一眼。", eff:2},{txt:"明天我会走琴房那边的", reply:"那我把新曲子留到明天弹。不见不散。", eff:1}]}
-      ],
-      [{side:"left", text:"今天食堂的泡菜锅好辣，你吃了吗？"},
-       {options:[{txt:"我吃了拌饭，还不错", reply:"下次一起吧。我请你吃泡菜锅，虽然辣但很好吃。", eff:2},{txt:"还没吃，正在犹豫吃什么", reply:"来吧，食堂角落那个位置我占了。给你留了座位。", eff:3},{txt:"不太饿，今天不吃了", reply:"不吃饭怎么行。我帮你去小卖部买个面包？", eff:1}]}
-      ]
-    ];
-    if (affection >= 55) {
-      seqs.push([
-        {side:"left", text:"今天写了一段歌词，想给你看看。"},
-        {options:[{txt:"发来吧，我帮你看看", reply:"「天台的风知道，我有一句话没说出口。」下面还没想好。你觉得怎么样？", eff:2},{txt:"这是写给谁的吗？", reply:"你觉得是写给谁的呢。反正第一个看到的人是你。", eff:3},{txt:"写歌越来越熟练了", reply:"因为有一个一直在听的人。你是我的缪斯。", eff:1}]}
-      ]);
-    }
-    return seqs[Math.floor(Math.random() * seqs.length)];
   }
 
   function renderChatScreen() {
@@ -724,14 +744,10 @@
     overlay.id = 'chatScreenOverlay';
     overlay.innerHTML = `
       <div class="chat-phone">
-        <div class="chat-phone-header">
-          <button class="back-btn" id="chatBackBtn">←</button>
-          <span>💬 李羲承</span>
-        </div>
+        <div class="chat-phone-header"><button class="back-btn" id="chatBackBtn">←</button><span>💬 李羲承</span></div>
         <div class="chat-messages" id="chatMsgArea"></div>
         <div class="chat-options" id="chatOptArea"></div>
-      </div>
-    `;
+      </div>`;
     document.body.appendChild(overlay);
     document.getElementById('chatBackBtn').addEventListener('click', closeChat);
     updateChatDisplay();
@@ -741,17 +757,12 @@
     const msgArea = document.getElementById('chatMsgArea');
     const optArea = document.getElementById('chatOptArea');
     if (!msgArea || !optArea) return;
-    msgArea.innerHTML = chatMessages.map(m => 
-      `<div class="chat-bubble ${m.side}">${m.text}</div>`
-    ).join('');
+    msgArea.innerHTML = chatMessages.map(m => `<div class="chat-bubble ${m.side}">${m.text}</div>`).join('');
     msgArea.scrollTop = msgArea.scrollHeight;
-    
     if (chatSequence && currentChatStep < chatSequence.length) {
       const step = chatSequence[currentChatStep];
       if (step.options) {
-        optArea.innerHTML = step.options.map((opt, i) => 
-          `<div class="chat-option-btn" data-chatidx="${i}">${opt.txt}</div>`
-        ).join('');
+        optArea.innerHTML = step.options.map((opt, i) => `<div class="chat-option-btn" data-chatidx="${i}">${opt.txt}</div>`).join('');
         document.querySelectorAll('.chat-option-btn').forEach(btn => {
           btn.addEventListener('click', (e) => {
             const idx = parseInt(btn.dataset.chatidx);
@@ -760,11 +771,7 @@
         });
       } else if (step.side) {
         optArea.innerHTML = '';
-        setTimeout(() => {
-          chatMessages.push(step);
-          currentChatStep++;
-          updateChatDisplay();
-        }, 800);
+        setTimeout(() => { chatMessages.push(step); currentChatStep++; updateChatDisplay(); }, 800);
       }
     } else {
       optArea.innerHTML = '<div style="color:#b35477;font-size:0.8rem;text-align:center;width:100%;">聊天结束</div>';
@@ -777,11 +784,7 @@
     if (!step || !step.options) return;
     const chosen = step.options[idx];
     chatMessages.push({side:"right", text:chosen.txt});
-    if (chosen.eff) {
-      affection += chosen.eff;
-      affection = Math.min(100, Math.max(0, affection));
-      updateStage();
-    }
+    if (chosen.eff) { affection += chosen.eff; affection = Math.min(100, Math.max(0, affection)); updateStage(); }
     currentChatStep++;
     chatMessages.push({side:"left", text:chosen.reply});
     updateChatDisplay();
@@ -794,10 +797,9 @@
     renderGame();
   }
 
-  // ----- 存档读档 -----
   function saveGame() {
     if (gameFinished) return;
-    const save = { player, affection, stage, turn, usedEventIds, currentState, gameFinished, pendingAutoMessage, hasNewMessage, chatUsedThisTurn };
+    const save = { player, affection, stage, turn, usedEventIds, usedChatIds, currentState, gameFinished, pendingAutoMessage, hasNewMessage, chatUsedThisTurn };
     localStorage.setItem("crushFinalSave", JSON.stringify(save));
     alert("存档成功");
   }
@@ -806,22 +808,19 @@
     if (!raw) { alert("没有存档"); return; }
     const data = JSON.parse(raw);
     player = data.player; affection = data.affection; stage = data.stage; turn = data.turn;
-    usedEventIds = data.usedEventIds; currentState = data.currentState; gameFinished = data.gameFinished;
+    usedEventIds = data.usedEventIds; usedChatIds = data.usedChatIds || [];
+    currentState = data.currentState; gameFinished = data.gameFinished;
     pendingAutoMessage = data.pendingAutoMessage || null;
     hasNewMessage = data.hasNewMessage || false;
     chatUsedThisTurn = data.chatUsedThisTurn || false;
     updateStage();
-    if (!gameFinished) {
-      renderGame();
-      if (hasNewMessage) document.getElementById("chatBadge").style.display = "flex";
-    }
+    if (!gameFinished) { renderGame(); if (hasNewMessage) document.getElementById("chatBadge").style.display="flex"; }
   }
 
   function showCreation() {
     const overlay = document.createElement('div');
     overlay.className = 'overlay';
-    overlay.innerHTML = `
-      <div class="create-card"><h2>🍃 暗恋这件小事</h2><p style="text-align:center;color:#b35d7c;margin-bottom:16px;">填写你的信息，开始这场故事</p>
+    overlay.innerHTML = `<div class="create-card"><h2>🍃 暗恋这件小事</h2><p style="text-align:center;color:#b35d7c;margin-bottom:16px;">填写你的信息</p>
       <div class="input-row"><label>🌸 姓名</label><input id="pName" placeholder="例如：小夏"></div>
       <div class="input-row"><label>🎂 年龄</label><input id="pAge" placeholder="例如：17"></div>
       <div class="input-row"><label>📚 班级</label><input id="pClass" placeholder="例如：高二3班"></div>
@@ -829,7 +828,7 @@
       <div class="input-row"><label>🎨 外貌</label><input id="pAppearance" placeholder="例如：清秀干净"></div>
       <div class="input-row"><label>💭 性格</label><input id="pPersonality" placeholder="例如：温柔细腻"></div>
       <div class="input-row"><label>🎧 爱好</label><input id="pHobby" placeholder="例如：听歌/阅读"></div>
-      <div class="input-row"><label>💞 与李羲承的初始关系</label><select id="pRelation"><option>完全陌生</option><option>同班同学</option><option>前后桌</option><option>社团成员</option><option>邻班</option></select></div>
+      <div class="input-row"><label>💞 初始关系</label><select id="pRelation"><option>完全陌生</option><option>同班同学</option><option>前后桌</option><option>社团成员</option><option>邻班</option></select></div>
       <button class="start-main-btn" id="confirmStart">开始</button></div>`;
     document.body.appendChild(overlay);
     document.getElementById('confirmStart').addEventListener('click', () => {
@@ -842,16 +841,11 @@
       player.hobby = document.getElementById('pHobby').value || "听歌";
       const rel = document.getElementById('pRelation').value;
       let bonus = 0;
-      if (rel === "同班同学") bonus = 6;
-      else if (rel === "前后桌") bonus = 9;
-      else if (rel === "社团成员") bonus = 7;
-      else if (rel === "邻班") bonus = 3;
+      if (rel==="同班同学") bonus=6; else if (rel==="前后桌") bonus=9; else if (rel==="社团成员") bonus=7; else if (rel==="邻班") bonus=3;
       affection = 18 + bonus;
-      updateStage(); turn = 1; gameFinished = false; usedEventIds = [];
-      pendingAutoMessage = null; hasNewMessage = false; chatUsedThisTurn = false;
-      currentState = generateTurn();
-      renderGame();
-      overlay.remove();
+      updateStage(); turn=1; gameFinished=false; usedEventIds=[]; usedChatIds=[];
+      pendingAutoMessage=null; hasNewMessage=false; chatUsedThisTurn=false;
+      currentState = generateTurn(); renderGame(); overlay.remove();
     });
   }
 
